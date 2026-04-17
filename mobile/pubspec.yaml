@@ -1,0 +1,98 @@
+name: ten_k_books
+description: 万卷书苑 - 多语言在线阅读平台
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  
+  # 状态管理
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+  
+  # 网络请求
+  dio: ^5.3.3
+  
+  # 本地存储
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  shared_preferences: ^2.2.2
+  
+  # UI 组件
+  cached_network_image: ^3.3.0
+  flutter_swiper: ^1.1.6
+  shimmer: ^3.0.0
+  flutter_smart_dialog: ^3.1.1
+  lottie: ^2.6.0
+  
+  # 阅读器
+  epub_view: ^4.0.2
+  flutter_html: ^3.0.0-beta.2
+  
+  # 工具
+  uuid: ^4.2.1
+  intl: ^0.18.1
+  url_launcher: ^6.2.1
+  package_info_plus: ^4.2.0
+  connectivity_plus: ^4.0.2
+  
+  # 国际化
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.18.1
+  
+  # 平台特性
+  path_provider: ^2.1.1
+  permission_handler: ^11.0.1
+  
+  # 动画
+  animations: ^2.0.8
+  flutter_animate: ^4.3.0
+  
+  # 路由
+  go_router: ^12.1.1
+  
+  # 列表
+  pull_to_refresh_flutter3: ^2.0.2
+  lazy_load_scrollview: ^1.3.0
+  
+  # 表单
+  flutter_form_builder: ^9.1.1
+  form_builder_validators: ^9.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  build_runner: ^2.4.7
+  riverpod_generator: ^2.3.9
+  hive_generator: ^2.0.1
+  json_serializable: ^6.7.1
+  json_annotation: ^4.8.1
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/fonts/
+    - assets/books/
+    - assets/i18n/
+  
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-Regular.ttf
+        - asset: assets/fonts/NotoSansSC-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/NotoSansSC-Bold.ttf
+          weight: 700

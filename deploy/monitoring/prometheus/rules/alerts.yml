@@ -1,0 +1,169 @@
+# ============================================
+# 万卷书苑 / 10kBooks - Prometheus 告警规则
+# ============================================
+
+groups:
+  # ==========================================
+  # 服务可用性告警
+  # ==========================================
+  - name: availability
+    interval: 30s
+    rules:
+      - alert: API服务Down
+        expr: up{job="10kbooks-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 服务不可用"
+          description: "API 服务 {{ $labels.instance }} 已经宕机超过 2 分钟"
+
+      - alert: Nginx服务Down
+        expr: up{job="nginx"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Nginx 服务不可用"
+          description: "Nginx 服务已经宕机超过 2 分钟"
+
+      - alert: 数据库服务Down
+        expr: up{job="postgres-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL 服务不可用"
+          description: "PostgreSQL 服务已经宕机超过 2 分钟"
+
+  # ==========================================
+  # 性能告警
+  # ==========================================
+  - name: performance
+    interval: 30s
+    rules:
+      - alert: API响应时间过高
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="10kbooks-api"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API 响应时间过高"
+          description: "API 95th 响应时间超过 2 秒，当前: {{ $value }}s"
+
+      - alert: API错误率过高
+        expr: rate(http_requests_total{job="10kbooks-api", status=~"5.."}[5m]) / rate(http_requests_total{job="10kbooks-api"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 错误率过高"
+          description: "API 5xx 错误率超过 5%，当前: {{ $value | humanizePercentage }}"
+
+      - alert: 数据库连接数过高
+        expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库连接数接近上限"
+          description: "PostgreSQL 连接数使用超过 80%"
+
+      - alert: 数据库慢查询
+        expr: rate(pg_stat_statements_mean_exec_time[5m]) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库存在慢查询"
+          description: "平均查询时间超过 1 秒"
+
+  # ==========================================
+  # 资源使用告警
+  # ==========================================
+  - name: resources
+    interval: 30s
+    rules:
+      - alert: CPU使用率过高
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU 使用率过高"
+          description: "服务器 {{ $labels.instance }} CPU 使用率超过 80%"
+
+      - alert: 内存使用率过高
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率过高"
+          description: "服务器 {{ $labels.instance }} 内存使用率超过 85%"
+
+      - alert: 磁盘空间不足
+        expr: (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "磁盘空间不足"
+          description: "服务器 {{ $labels.instance }} 磁盘使用率超过 85%"
+
+      - alert: 容器内存使用过高
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器内存使用过高"
+          description: "容器 {{ $labels.container_label_com_docker_compose_service }} 内存使用超过 90%"
+
+  # ==========================================
+  # 业务告警
+  # ==========================================
+  - name: business
+    interval: 60s
+    rules:
+      - alert: 用户注册数异常
+        expr: rate(user_registrations_total[1h]) < 0.1
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "用户注册数异常低"
+          description: "过去 30 分钟几乎没有新用户注册"
+
+      - alert: 阅读量异常
+        expr: rate(book_read_events_total[1h]) < 1
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "阅读量异常低"
+          description: "过去 30 分钟阅读量异常低"
+
+  # ==========================================
+  # Elasticsearch 告警
+  # ==========================================
+  - name: elasticsearch
+    interval: 60s
+    rules:
+      - alert: Elasticsearch集群不健康
+        expr: elasticsearch_cluster_health_status != 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elasticsearch 集群状态不健康"
+          description: "ES 集群状态为 {{ $value }}"
+
+      - alert: Elasticsearch节点离线
+        expr: up{job="elasticsearch"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elasticsearch 节点离线"
+          description: "ES 节点 {{ $labels.instance }} 已离线"

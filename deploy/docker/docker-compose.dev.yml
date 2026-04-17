@@ -1,0 +1,135 @@
+# ============================================
+# 万卷书苑 / 10kBooks - Docker Compose 开发环境
+# ============================================
+
+services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/docker/Dockerfile.backend
+      args:
+        - NODE_ENV=development
+    container_name: 10kbooks-api-dev
+    command: npm run start:dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://10kbooks:dev_password@postgres:5432/10kbooks_dev
+      - REDIS_URL=redis://:dev_redis_pass@redis:6379
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - JWT_SECRET=dev_jwt_secret_change_in_production
+      - OSS_ENDPOINT=http://minio:9000
+      - OSS_BUCKET=10kbooks-dev
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+      - ./uploads:/app/uploads
+    networks:
+      - 10kbooks-dev-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: ../deploy/docker/Dockerfile.frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost/api
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    networks:
+      - 10kbooks-dev-network
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: 10kbooks-postgres-dev
+    environment:
+      - POSTGRES_DB=10kbooks_dev
+      - POSTGRES_USER=10kbooks
+      - POSTGRES_PASSWORD=dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - 10kbooks-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U 10kbooks -d 10kbooks_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: 10kbooks-redis-dev
+    command: redis-server --requirepass dev_redis_pass
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - 10kbooks-dev-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dev_redis_pass", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: 10kbooks-es-dev
+    environment:
+      - node.name=10kbooks-es-dev
+      - cluster.name=10kbooks-dev-cluster
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_dev_data:/usr/share/elasticsearch/data
+    networks:
+      - 10kbooks-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 | grep -q 'cluster_name'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: 10kbooks-minio-dev
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_dev_data:/data
+    networks:
+      - 10kbooks-dev-network
+    command: server /data --console-address ":9001"
+
+networks:
+  10kbooks-dev-network:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+  es_dev_data:
+  minio_dev_data:

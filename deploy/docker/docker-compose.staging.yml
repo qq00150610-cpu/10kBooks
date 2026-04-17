@@ -1,0 +1,131 @@
+# ============================================
+# 万卷书苑 / 10kBooks - Docker Compose 预发布环境
+# ============================================
+
+services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/docker/Dockerfile.backend
+      args:
+        - NODE_ENV=staging
+    container_name: 10kbooks-api-staging
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=staging
+      - DATABASE_URL=${STAGING_DATABASE_URL}
+      - REDIS_URL=${STAGING_REDIS_URL}
+      - ELASTICSEARCH_URL=${STAGING_ELASTICSEARCH_URL}
+      - JWT_SECRET=${STAGING_JWT_SECRET}
+      - OSS_ENDPOINT=${STAGING_OSS_ENDPOINT}
+      - OSS_BUCKET=${STAGING_OSS_BUCKET}
+    volumes:
+      - ./uploads:/app/uploads
+      - api_staging_logs:/app/logs
+    networks:
+      - 10kbooks-staging-network
+    depends_on:
+      - postgres
+      - redis
+      - elasticsearch
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: ../deploy/docker/Dockerfile.frontend
+    container_name: 10kbooks-web-staging
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - 10kbooks-staging-network
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: 10kbooks-postgres-staging
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${STAGING_POSTGRES_DB}
+      - POSTGRES_USER=${STAGING_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${STAGING_POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+      - ./backups/postgres:/backups
+    networks:
+      - 10kbooks-staging-network
+    command: >
+      postgres
+      -c max_connections=100
+      -c shared_buffers=256MB
+      -c effective_cache_size=512MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STAGING_POSTGRES_USER} -d ${STAGING_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: 10kbooks-redis-staging
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${STAGING_REDIS_PASSWORD}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_staging_data:/data
+    networks:
+      - 10kbooks-staging-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${STAGING_REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: 10kbooks-es-staging
+    restart: unless-stopped
+    environment:
+      - node.name=10kbooks-es-staging
+      - cluster.name=10kbooks-staging-cluster
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${STAGING_ELASTIC_PASSWORD}
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_staging_data:/usr/share/elasticsearch/data
+    networks:
+      - 10kbooks-staging-network
+
+networks:
+  10kbooks-staging-network:
+    driver: bridge
+
+volumes:
+  postgres_staging_data:
+  redis_staging_data:
+  es_staging_data:
+  api_staging_logs:

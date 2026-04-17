@@ -1,0 +1,123 @@
+# ============================================
+# 万卷书苑 / 10kBooks - Prometheus 配置
+# 监控指标采集
+# ============================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: '10kbooks-production'
+    environment: 'production'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+scrape_configs:
+  # ==========================================
+  # Prometheus 自身监控
+  # ==========================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # ==========================================
+  # API 服务 (Node.js + 自定义指标)
+  # ==========================================
+  - job_name: '10kbooks-api'
+    static_configs:
+      - targets: ['10kbooks-api:9464']
+        labels:
+          service: 'api'
+          environment: 'production'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # ==========================================
+  # Nginx 反向代理
+  # ==========================================
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+        labels:
+          service: 'nginx'
+
+  # ==========================================
+  # PostgreSQL 数据库
+  # ==========================================
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgres'
+    scrape_interval: 30s
+
+  # ==========================================
+  # Redis 缓存
+  # ==========================================
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+    scrape_interval: 30s
+
+  # ==========================================
+  # Elasticsearch 搜索
+  # ==========================================
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch:9114']
+        labels:
+          service: 'elasticsearch'
+
+  # ==========================================
+  # Docker 容器
+  # ==========================================
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+    metric_path: /metrics
+    scrape_interval: 30s
+
+  # ==========================================
+  # Node Exporter (服务器指标)
+  # ==========================================
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+
+  # ==========================================
+  # Blackbox 探针 (可用性监控)
+  # ==========================================
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://www.10kbooks.com
+          - https://api.10kbooks.com
+        labels:
+          service: 'blackbox'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        regex: '(https?://)?([^@]+)?'
+        target_label: instance
+      - replacement: ${1}${2}
+        target_label: __address__

@@ -1,0 +1,233 @@
+# ============================================
+# 万卷书苑 / 10kBooks - Elasticsearch 配置
+# 搜索引擎集群配置
+# ============================================
+
+# ==========================================
+# Elasticsearch 主配置文件
+# ==========================================
+
+# 集群名称
+cluster.name: 10kbooks-cluster
+
+# 节点名称
+node.name: 10kbooks-es-node-1
+
+# 节点类型 (master/data/ingest)
+node.attr.rack: rack1
+
+# 数据路径
+path.data: /var/lib/elasticsearch/data
+path.logs: /var/log/elasticsearch
+
+# 内存锁定
+bootstrap.memory_lock: true
+
+# 网络
+network.host: 0.0.0.0
+http.port: 9200
+transport.tcp.port: 9300
+
+# 集群发现
+discovery.seed_hosts:
+  - 10kbooks-es-node-1:9300
+  - 10kbooks-es-node-2:9300
+  - 10kbooks-es-node-3:9300
+
+# 初始主节点
+cluster.initial_master_nodes:
+  - 10kbooks-es-node-1
+  - 10kbooks-es-node-2
+  - 10kbooks-es-node-3
+
+# ==========================================
+# 内存配置
+# ==========================================
+
+# JVM 堆大小 (建议为系统内存的50%, 最大32GB)
+# 在 jvm.options 中配置:
+# -Xms2g
+# -Xmx2g
+
+# ==========================================
+# 性能优化
+# ==========================================
+
+# 刷新频率
+indices.memory.index_buffer_size: 20%
+indices.queries.cache.size: 15%
+indices.fielddata.cache.size: 20%
+
+# 线程池
+thread_pool.write.size: 30
+thread_pool.write.queue_size: 1000
+thread_pool.search.size: 30
+thread_pool.search.queue_size: 1000
+
+# 熔断器
+breaker.fielddata.limit: 60%
+breaker.request.limit: 40%
+breaker.total.limit: 95%
+
+# ==========================================
+# 副本与分片
+# ==========================================
+
+# 默认分片数
+index.number_of_shards: 3
+
+# 默认副本数
+index.number_of_replicas: 1
+
+# 自动创建索引
+action.auto_create_index: true
+
+# ==========================================
+# 快照配置
+# ==========================================
+
+# 快照仓库路径
+path.repo: ["/var/lib/elasticsearch/backups"]
+
+# ==========================================
+# 监控配置
+# ==========================================
+
+# 收集统计信息
+node.stats: true
+indices.stats: true
+
+# ==========================================
+# 安全配置
+# ==========================================
+
+# X-Pack 安全
+xpack.security.enabled: true
+xpack.security.enrollment.enabled: true
+
+# 内置用户
+xpack.security.transport.ssl.enabled: true
+xpack.security.transport.ssl.verification_mode: certificate
+xpack.security.transport.ssl.client_authentication: required
+xpack.security.transport.ssl.keystore.path: certs/elastic-certificates.p12
+xpack.security.transport.ssl.truststore.path: certs/elastic-certificates.p12
+
+xpack.security.http.ssl.enabled: false
+xpack.security.http.ssl.keystore.path: certs/http.p12
+xpack.security.http.ssl.truststore.path: certs/http.p12
+
+# ==========================================
+# ILM (索引生命周期管理)
+# ==========================================
+
+# 在 Kibana 或通过 API 配置:
+# PUT _ilm/policy/10kbooks_books_policy
+# {
+#   "policy": {
+#     "phases": {
+#       "hot": {
+#         "min_age": "0ms",
+#         "actions": {
+#           "rollover": {
+#             "max_age": "7d",
+#             "max_size": "50gb"
+#           },
+#           "set_priority": 100
+#         }
+#       },
+#       "warm": {
+#         "min_age": "30d",
+#         "actions": {
+#           "set_priority": 50,
+#           "shrink": {
+#             "number_of_shards": 1
+#           },
+#           "forcemerge": {
+#             "max_num_segments": 1
+#           }
+#         }
+#       },
+#       "cold": {
+#         "min_age": "90d",
+#         "actions": {
+#           "set_priority": 0,
+#           "freeze": {}
+#         }
+#       },
+#       "delete": {
+#         "min_age": "365d",
+#         "actions": {
+#           "delete": {}
+#         }
+#       }
+#     }
+#   }
+# }
+
+-- ==========================================
+-- Elasticsearch 索引模板
+-- ==========================================
+
+-- 书籍索引
+PUT /books
+{
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1,
+    "analysis": {
+      "analyzer": {
+        "multi_lang_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "asciifolding", "cjk_width"]
+        },
+        "chinese_analyzer": {
+          "type": "custom",
+          "tokenizer": "ik_max_word",
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "title": { 
+        "type": "text",
+        "analyzer": "multi_lang_analyzer",
+        "fields": {
+          "keyword": { "type": "keyword" }
+        }
+      },
+      "description": { "type": "text", "analyzer": "multi_lang_analyzer" },
+      "author": { "type": "keyword" },
+      "language": { "type": "keyword" },
+      "category": { "type": "keyword" },
+      "tags": { "type": "keyword" },
+      "publish_date": { "type": "date" },
+      "rating": { "type": "float" },
+      "view_count": { "type": "long" },
+      "created_at": { "type": "date" },
+      "updated_at": { "type": "date" }
+    }
+  }
+}
+
+-- 用户行为索引
+PUT /user_activities
+{
+  "settings": {
+    "number_of_shards": 2,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "properties": {
+      "user_id": { "type": "keyword" },
+      "action_type": { "type": "keyword" },
+      "book_id": { "type": "keyword" },
+      "timestamp": { "type": "date" },
+      "duration": { "type": "integer" },
+      "progress": { "type": "float" }
+    }
+  }
+}

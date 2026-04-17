@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="notification_color">#E53935</color>
+    <color name="primaryColor">#E53935</color>
+    <color name="secondaryColor">#FFFF7043</color>
+    <color name="accentColor">#FFFFCA28</color>
+    <color name="backgroundColor">#F5F5F5</color>
+    <color name="surfaceColor">#FFFFFF</color>
+    <color name="textPrimary">#212121</color>
+    <color name="textSecondary">#757575</color>
+</resources>

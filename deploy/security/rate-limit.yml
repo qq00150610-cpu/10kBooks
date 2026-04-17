@@ -1,0 +1,197 @@
+# ============================================
+# 万卷书苑 / 10kBooks - API 限流配置
+# 基于 Redis 的分布式限流
+# ============================================
+
+# ==========================================
+# 限流策略配置
+# ==========================================
+
+# API 基础限流
+- name: api-default
+  max_connections: 100
+  window_seconds: 60
+  description: "默认 API 限流"
+
+# 登录接口限流 (防止暴力破解)
+- name: login
+  max_connections: 5
+  window_seconds: 300
+  description: "登录接口限流"
+
+# 注册接口限流 (防止恶意注册)
+- name: register
+  max_connections: 3
+  window_seconds: 3600
+  description: "注册接口限流"
+
+# 搜索接口限流
+- name: search
+  max_connections: 30
+  window_seconds: 60
+  description: "搜索接口限流"
+
+# 文件上传限流
+- name: upload
+  max_connections: 5
+  window_seconds: 3600
+  description: "文件上传限流"
+
+# 阅读器接口 (较大配额)
+- name: read
+  max_connections: 50
+  window_seconds: 60
+  description: "阅读器接口限流"
+
+# ==========================================
+# 限流算法说明
+# ==========================================
+
+# 1. 固定窗口计数器 (Fixed Window)
+# 简单实现，以时间窗口为维度计数
+# 优点: 实现简单
+# 缺点: 边界时刻可能有突发流量
+
+# 2. 滑动窗口日志 (Sliding Window Log)
+# 记录每个请求的时间戳
+# 优点: 精确
+# 缺点: 占用内存大
+
+# 3. 滑动窗口计数器 (Sliding Window Counter)
+# 结合固定窗口和滑动窗口
+# 优点: 内存占用小，较精确
+# 缺点: 实现复杂
+
+# 4. 令牌桶算法 (Token Bucket) - 推荐
+# 以恒定速率添加令牌
+# 优点: 允许突发流量
+# 缺点: 实现复杂
+
+# 5. 漏桶算法 (Leaky Bucket)
+# 以恒定速率处理请求
+# 优点: 平滑流量
+# 缺点: 不允许突发
+
+# ==========================================
+# 实现代码示例 (Node.js + Redis)
+# ==========================================
+
+"""
+// src/common/rate-limiter.ts
+
+import Redis from 'ioredis';
+import { Injectable } from '@nestjs/common';
+
+interface RateLimitConfig {
+  maxConnections: number;
+  windowSeconds: number;
+}
+
+@Injectable()
+export class RateLimiterService {
+  private redis: Redis;
+
+  constructor() {
+    this.redis = new Redis(process.env.REDIS_URL);
+  }
+
+  // 滑动窗口限流算法
+  async isAllowed(key: string, config: RateLimitConfig): Promise<boolean> {
+    const now = Date.now();
+    const windowStart = now - config.windowSeconds * 1000;
+    const redisKey = `ratelimit:${key}`;
+
+    // 使用 Redis 事务保证原子性
+    const pipeline = this.redis.pipeline();
+    
+    // 删除窗口外的记录
+    pipeline.zremrangebyscore(redisKey, 0, windowStart);
+    
+    // 计数
+    pipeline.zcard(redisKey);
+    
+    // 添加当前请求
+    pipeline.zadd(redisKey, now, `${now}-${Math.random()}`);
+    
+    // 设置过期时间
+    pipeline.expire(redisKey, config.windowSeconds);
+
+    const results = await pipeline.exec();
+    const count = results[1][1] as number;
+
+    return count < config.maxConnections;
+  }
+
+  // 获取剩余配额
+  async getRemaining(key: string, config: RateLimitConfig): Promise<number> {
+    const now = Date.now();
+    const windowStart = now - config.windowSeconds * 1000;
+    const redisKey = `ratelimit:${key}`;
+
+    const count = await this.redis.zcount(redisKey, windowStart, now);
+    return Math.max(0, config.maxConnections - count);
+  }
+
+  // 获取重置时间
+  async getResetTime(key: string): Promise<number> {
+    const redisKey = `ratelimit:${key}`;
+    const ttl = await this.redis.ttl(redisKey);
+    return ttl > 0 ? Date.now() + ttl * 1000 : Date.now();
+  }
+}
+"""
+
+# ==========================================
+# NestJS 限流守卫示例
+# ==========================================
+
+"""
+// src/common/guards/rate-limit.guard.ts
+
+import { Injectable, CanActivate, ExecutionContext, HttpException, HttpStatus } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { RateLimiterService } from '../rate-limiter.service';
+
+export const RateLimit = (maxConnections: number, windowSeconds: number) => {
+  return (target: any, propertyKey?: string, descriptor?: PropertyDescriptor) => {
+    if (descriptor) {
+      // 方法装饰器
+      const original = descriptor.value;
+      descriptor.value = async function(...args: any[]) {
+        const context = args[0];
+        const key = `${context.route.path}:${context.ip}`;
+        
+        const limiter = new RateLimiterService();
+        const allowed = await limiter.isAllowed(key, { maxConnections, windowSeconds });
+        
+        if (!allowed) {
+          throw new HttpException(
+            '请求过于频繁，请稍后再试',
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
+        
+        return original.apply(this, args);
+      };
+    }
+  };
+};
+"""
+
+# ==========================================
+# Nginx 限流配置 (作为补充)
+# ==========================================
+
+"""
+# http 块中定义限流区域
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=login_limit:10m rate=1r/s;
+limit_conn_zone $binary_remote_addr zone=addr:10m;
+
+# server 块中使用
+location /api/ {
+    limit_req zone=api_limit burst=20 nodelay;
+    limit_conn addr 20;
+    proxy_pass http://api_backend;
+}
+"""
