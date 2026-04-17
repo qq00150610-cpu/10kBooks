@@ -21,11 +21,22 @@ jobs:
         flutter-version: '3.24.0'
         channel: 'stable'
     
-    - name: Build Mobile App
+    - name: Create keystore
       working-directory: mobile
       run: |
-        flutter pub get
-        flutter build apk --release
+        mkdir -p android/app/keystore
+        keytool -genkeypair -v -keystore android/app/keystore/release.jks \
+          -alias release -keyalg RSA -keysize 2048 -validity 10000 \
+          -storepass qq900236 -keypass qq900236 \
+          -dname "CN=Release, OU=Dev, O=Company, L=City, ST=State, C=CN"
+    
+    - name: Get dependencies
+      working-directory: mobile
+      run: flutter pub get
+    
+    - name: Build APK
+      working-directory: mobile
+      run: flutter build apk --release
     
     - uses: actions/upload-artifact@v4
       with:
